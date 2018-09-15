@@ -1,5 +1,6 @@
 const {inspect} = require('util'); //for debugging
-let set;
+let set, set3;
+let added = false;
 
 'use strict';
 
@@ -8,6 +9,7 @@ class DocFinder {
     /** Constructor for instance of DocFinder. */
     constructor() {
         this.contents = new Map();
+        this.contents2 = new Map();
     }
 
     /** Return array of non-noise normalized words from string content.
@@ -21,10 +23,45 @@ class DocFinder {
         for(let word of set){
             words.replace(word, '');
         }
-        let temp = words.split(' ');
+        let temp = words.split(/\s+/);
+        this._wordsLow(temp);
         return temp;
     }
 
+    _wordsLow(content){
+        let set2 = new Set(content);
+        for(let word of set2){
+            let tmp = [], tmp2 = [], times = [];
+            for(let key of this.contents){
+                let regex = new RegExp(word, "i");
+                //let regex2 = new RegExp(word, "ig");
+                if(regex.test(key[1])){
+                    tmp.push(key[0]);
+                    tmp2.push(key[1].toLowerCase().indexOf(word)); //potential bottleneck, check later
+                    times.push(key[1].match(/word/ig).length);
+                }
+            }
+            //this.contents2.set(word,{occurrences:this.wordCount(word, content), offset:this.wordOffset(word, content)});
+            this.contents2.set(word, {titles: tmp, offset: tmp2, occurrences: times});
+        }
+
+        //this.words(content);
+    }
+
+
+    addSearchWords() {
+        let tmp , tmp3 = [];
+        for(let value of this.contents.values()){
+            //let value = title.getKey();
+            tmp = value.split(/\n|\s+/g);
+            for(let tmp2 of tmp){
+                if(!set.has(tmp2.toLowerCase()))
+                    tmp3.push(tmp2.toLowerCase());
+            }
+        }
+        set3 = new Set(tmp3);
+        added = true;
+    }
     /** Add all normalized words in noiseWords string to this as
      *  noise words.
      */
@@ -56,8 +93,28 @@ class DocFinder {
      *
      */
     find(terms) {
-        //@TODO
-        return [];
+        let res3 = [];
+        for(let term of terms){
+        let res = this.contents2.get(term.toLowerCase());
+        for(let i=0; i<res.titles.length; i++){
+        let res2 = new Result(res.titles[i], res.occurrences[i], this.findLine(res.titles[i], res.offset[i]));
+        res3.push(res2);
+        }
+        }
+        return res3;
+    }
+
+    findLine(title, offset){
+       let doc = this.contents.get(title.toLowerCase());
+       let i = offset;
+       while(i!=0 && !doc[i].match('\n')){
+       i--;
+       }
+       let end = offset;
+       while(!doc[end].match('\n')){
+           end++;
+       }
+       return doc.substring(i,end);
     }
 
     /** Given a text string, return a ordered list of all completions of
@@ -65,8 +122,15 @@ class DocFinder {
      *  not alphabetic.
      */
     complete(text) {
-        //@TODO
-        return [];
+        if(added==false)
+            this.addSearchWords();
+        let temp = [];
+        for(let word of set3){
+            if(word.startsWith(text)){
+                temp.push(word);
+            }
+        }
+        return temp;
     }
 
 
