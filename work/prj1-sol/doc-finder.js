@@ -104,7 +104,7 @@ class DocFinder {
         res3.push(res2);
         }
         }
-        return res3;
+        return res3.sort(compareResults);
     }
 
     findLine(title, offset){
