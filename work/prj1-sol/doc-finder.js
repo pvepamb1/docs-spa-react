@@ -19,6 +19,8 @@ class DocFinder {
      *  matching regex [^a-z] have been removed.
      */
     words(content) {
+        if(added==false)
+            this.addSearchWords();
         let words = normalize(content);
         for(let word of set){
             words.replace(word, '');
@@ -53,10 +55,11 @@ class DocFinder {
         let tmp , tmp3 = [];
         for(let value of this.contents.values()){
             //let value = title.getKey();
-            tmp = value.split(/\n|\s+/g);
+            tmp = value.replace( /\n/g, " " ).split( " " );
             for(let tmp2 of tmp){
-                if(!set.has(tmp2.toLowerCase()))
-                    tmp3.push(tmp2.toLowerCase());
+                let tmpval = normalize(tmp2);
+                if(!set.has(tmpval))
+                    tmp3.push(tmpval);
             }
         }
         set3 = new Set(tmp3);
