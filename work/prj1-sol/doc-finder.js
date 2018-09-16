@@ -36,11 +36,11 @@ class DocFinder {
             let tmp = [], tmp2 = [], times = [];
             for(let key of this.contents){
                 let regex = new RegExp(word, "i");
-                //let regex2 = new RegExp(word, "ig");
+                let regex2 = new RegExp(word, "ig");
                 if(regex.test(key[1])){
                     tmp.push(key[0]);
                     tmp2.push(key[1].toLowerCase().indexOf(word)); //potential bottleneck, check later
-                    times.push(key[1].match(/word/ig).length);
+                    times.push(key[1].match(regex2).length);
                 }
             }
             //this.contents2.set(word,{occurrences:this.wordCount(word, content), offset:this.wordOffset(word, content)});
