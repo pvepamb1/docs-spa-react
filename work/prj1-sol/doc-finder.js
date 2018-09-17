@@ -21,11 +21,11 @@ class DocFinder {
     words(content) {
         if(added==false)
             this.addSearchWords();
-        let words = normalize(content);
+        let temp = content.split(/\s+/).map(x => normalize(x));
         for(let word of set){
-            words.replace(word, '');
+            for(let tmp of temp)
+            tmp.replace(word, '');
         }
-        let temp = words.split(/\s+/);
         this._wordsLow(temp);
         return temp;
     }
@@ -43,13 +43,9 @@ class DocFinder {
                     times.push(key[1].match(regex2).length);
                 }
             }
-            //this.contents2.set(word,{occurrences:this.wordCount(word, content), offset:this.wordOffset(word, content)});
             this.contents2.set(word, {titles: tmp, offset: tmp2, occurrences: times});
         }
-
-        //this.words(content);
     }
-
 
     addSearchWords() {
         let tmp , tmp3 = [];
@@ -65,6 +61,7 @@ class DocFinder {
         set3 = new Set(tmp3);
         added = true;
     }
+
     /** Add all normalized words in noiseWords string to this as
      *  noise words.
      */
@@ -117,7 +114,7 @@ class DocFinder {
        while(!doc[end].match('\n')){
            end++;
        }
-       return doc.substring(i,end);
+       return doc.substring(i,end)+'\n';
     }
 
     /** Given a text string, return a ordered list of all completions of
