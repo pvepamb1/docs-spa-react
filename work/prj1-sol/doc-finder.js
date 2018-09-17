@@ -39,7 +39,8 @@ class DocFinder {
      */
     _wordsLow(content) {
         let set2 = new Set(content);
-        for (let word of keyWordsSet) {
+        for (let word of set2) {
+            if(!this.keyWordsMap.has(word)){
             let titleArray = [], offsetArray = [], times = [];
             for (let entrySet of this.library) {
                 let regex = new RegExp(word, "i");
@@ -51,14 +52,12 @@ class DocFinder {
                 }
             }
             this.keyWordsMap.set(word, {titles: titleArray, offset: offsetArray, occurrences: times});
+            }
         }
     }
 
     /** Builds a set of all possible search terms*/
     addSearchWords() {
-
-        //let tmp4 = Array.from(this.library.values()).map(x => x.replace(/\n/g, " ").split(" "));
-        //map(x => normalize(x)).filter(x => this.isNoiseWord(x))
         let tmp = [];
         for (let value of this.library.values()) {
             tmp.push.apply(tmp,value.replace(/\n/g, " ").split(" ").map(x => normalize(x)).filter(x => this.isNoiseWord(x)));
