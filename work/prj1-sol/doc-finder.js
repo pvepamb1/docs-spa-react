@@ -1,6 +1,6 @@
 const {inspect} = require('util'); //for debugging
-let set, set3;
-let added = false;
+let noiseWordsSet, keyWordsSet;
+let addedKeyWords = false;
 
 'use strict';
 
@@ -8,8 +8,8 @@ class DocFinder {
 
     /** Constructor for instance of DocFinder. */
     constructor() {
-        this.contents = new Map();
-        this.contents2 = new Map();
+        this.library = new Map();
+        this.keyWordsMap = new Map();
     }
 
     /** Return array of non-noise normalized words from string content.
@@ -19,54 +19,59 @@ class DocFinder {
      *  matching regex [^a-z] have been removed.
      */
     words(content) {
-        if(added==false)
+        if (addedKeyWords === false)
             this.addSearchWords();
-        let temp = content.split(/\s+/).map(x => normalize(x));
-        for(let word of set){
-            for(let tmp of temp)
-            tmp.replace(word, '');
-        }
+        let temp = content.split(/\s+/).map(x => normalize(x)).filter(x => this.isNoiseWord(x));
         this._wordsLow(temp);
         return temp;
     }
 
-    _wordsLow(content){
+    /** Returns false if the word is a noiseword, and true otherwise.
+     *  return values are inverted to make it easy for filter functions.
+     */
+    isNoiseWord(word) {
+        return !noiseWordsSet.has(word);
+    }
+
+    /** Indexes all possible search terms with an object as value.
+     *  The object houses details about the search term, such as
+     *  no. of occurrences, offset of first occurrence and the titles.
+     */
+    _wordsLow(content) {
         let set2 = new Set(content);
-        for(let word of set2){
-            let tmp = [], tmp2 = [], times = [];
-            for(let key of this.contents){
+        for (let word of keyWordsSet) {
+            let titleArray = [], offsetArray = [], times = [];
+            for (let entrySet of this.library) {
                 let regex = new RegExp(word, "i");
                 let regex2 = new RegExp(word, "ig");
-                if(regex.test(key[1])){
-                    tmp.push(key[0]);
-                    tmp2.push(key[1].toLowerCase().indexOf(word)); //potential bottleneck, check later
-                    times.push(key[1].match(regex2).length);
+                if (regex.test(entrySet[1])) {
+                    titleArray.push(entrySet[0]);
+                    offsetArray.push(entrySet[1].toLowerCase().indexOf(word));
+                    times.push(entrySet[1].match(regex2).length);
                 }
             }
-            this.contents2.set(word, {titles: tmp, offset: tmp2, occurrences: times});
+            this.keyWordsMap.set(word, {titles: titleArray, offset: offsetArray, occurrences: times});
         }
     }
 
+    /** Builds a set of all possible search terms*/
     addSearchWords() {
-        let tmp , tmp3 = [];
-        for(let value of this.contents.values()){
-            //let value = title.getKey();
-            tmp = value.replace( /\n/g, " " ).split( " " );
-            for(let tmp2 of tmp){
-                let tmpval = normalize(tmp2);
-                if(!set.has(tmpval))
-                    tmp3.push(tmpval);
-            }
+
+        //let tmp4 = Array.from(this.library.values()).map(x => x.replace(/\n/g, " ").split(" "));
+        //map(x => normalize(x)).filter(x => this.isNoiseWord(x))
+        let tmp = [];
+        for (let value of this.library.values()) {
+            tmp.push.apply(tmp,value.replace(/\n/g, " ").split(" ").map(x => normalize(x)).filter(x => this.isNoiseWord(x)));
         }
-        set3 = new Set(tmp3);
-        added = true;
+        keyWordsSet = new Set(tmp);
+        addedKeyWords = true;
     }
 
     /** Add all normalized words in noiseWords string to this as
      *  noise words.
      */
     addNoiseWords(noiseWords) {
-        set = new Set(noiseWords.split(/\n/));
+        noiseWordsSet = new Set(noiseWords.split(/\n/));
     }
 
     /** Add document named by string name with specified content to this
@@ -74,7 +79,7 @@ class DocFinder {
      *  words in content string.
      */
     addContent(name, content) {
-        this.contents.set(name, content);
+        this.library.set(name, content);
     }
 
     /** Given a list of normalized, non-noise words search terms,
@@ -93,28 +98,22 @@ class DocFinder {
      *
      */
     find(terms) {
-        let res3 = [];
-        for(let term of terms){
-        let res = this.contents2.get(term.toLowerCase());
-        for(let i=0; i<res.titles.length; i++){
-        let res2 = new Result(res.titles[i], res.occurrences[i], this.findLine(res.titles[i], res.offset[i]));
-        res3.push(res2);
+        let results = [];
+        for (let term of terms) {
+            let res = this.keyWordsMap.get(term.toLowerCase());
+            for (let i = 0; i < res.titles.length; i++) {
+                results.push(new Result(res.titles[i], res.occurrences[i], this.findLine(res.titles[i], res.offset[i])));
+            }
         }
-        }
-        return res3.sort(compareResults);
+        return results.sort(compareResults);
     }
 
-    findLine(title, offset){
-       let doc = this.contents.get(title.toLowerCase());
-       let i = offset;
-       while(i!=0 && !doc[i].match('\n')){
-       i--;
-       }
-       let end = offset;
-       while(!doc[end].match('\n')){
-           end++;
-       }
-       return doc.substring(i,end)+'\n';
+    /** Given a document and an offset, returns the line in the document*/
+    findLine(title, offset) {
+        let doc = this.library.get(title.toLowerCase());
+        let start = doc.substring(0, offset).lastIndexOf('\n');
+        let end = doc.substr(offset).indexOf('\n')+offset;
+        return doc.substring(start+1, end) + '\n';
     }
 
     /** Given a text string, return a ordered list of all completions of
@@ -122,15 +121,16 @@ class DocFinder {
      *  not alphabetic.
      */
     complete(text) {
-        if(added==false)
+        if (addedKeyWords === false)
             this.addSearchWords();
-        let temp = [];
-        for(let word of set3){
-            if(word.startsWith(text)){
+        return keyWordsSet.filter(x => x.startsWith(text));
+        /*let temp = [];
+        for (let word of keyWordsSet) {
+            if (word.startsWith(text)) {
                 temp.push(word);
             }
-        }
-        return temp;
+        }*/
+        //return temp;
     }
 
 
@@ -146,10 +146,14 @@ const WORD_REGEX = /\S+/g;
  */
 class Result {
     constructor(name, score, lines) {
-        this.name = name; this.score = score; this.lines = lines;
+        this.name = name;
+        this.score = score;
+        this.lines = lines;
     }
 
-    toString() { return `${this.name}: ${this.score}\n${this.lines}`; }
+    toString() {
+        return `${this.name}: ${this.score}\n${this.lines}`;
+    }
 }
 
 /** Compare result1 with result2: higher scores compare lower; if
