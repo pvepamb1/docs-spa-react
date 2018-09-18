@@ -43,11 +43,11 @@ class DocFinder {
             if(!this.keyWordsMap.has(word)){
             let titleArray = [], offsetArray = [], times = [];
             for (let entrySet of this.library) {
-                let regex = new RegExp(word, "i");
-                let regex2 = new RegExp(word, "ig");
+                let regex = new RegExp('\\b'+word+'(?=[^a-z])', "i");
+                let regex2 = new RegExp('\\b'+word+'(?=[^a-z])', "ig");
                 if (regex.test(entrySet[1])) {
                     titleArray.push(entrySet[0]);
-                    offsetArray.push(entrySet[1].toLowerCase().indexOf(word));
+                    offsetArray.push(regex.exec(entrySet[1]).index);
                     times.push(entrySet[1].match(regex2).length);
                 }
             }
@@ -104,6 +104,15 @@ class DocFinder {
                 results.push(new Result(res.titles[i], res.occurrences[i], this.findLine(res.titles[i], res.offset[i])));
             }
         }
+        for(let i=0; i<results.length-1; i++){
+            for(let j=i+1; j<results.length; j++) {
+                if (results[i].lines.match(results[j].lines)) {
+                    results[i].score += results[j].score;
+                    results.splice(j, 1);
+                    j--;
+                }
+            }
+        }
         return results.sort(compareResults);
     }
 
@@ -123,13 +132,6 @@ class DocFinder {
         if (addedKeyWords === false)
             this.addSearchWords();
         return keyWordsSet.filter(x => x.startsWith(text));
-        /*let temp = [];
-        for (let word of keyWordsSet) {
-            if (word.startsWith(text)) {
-                temp.push(word);
-            }
-        }*/
-        //return temp;
     }
 
 
