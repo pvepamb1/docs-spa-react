@@ -120,7 +120,7 @@ class DocFinder {
         }
         for(let i=0; i<results.length-1; i++){
             for(let j=i+1; j<results.length; j++) {
-                if (results[i].lines == results[j].lines) {
+                if (results[i].lines == results[j].lines && results[i].name == results[j].name) {
                     results[i].score += results[j].score;
                     results.splice(j, 1);
                     j--;
