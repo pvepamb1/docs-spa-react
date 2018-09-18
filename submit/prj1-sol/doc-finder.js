@@ -10,6 +10,7 @@ class DocFinder {
     constructor() {
         this.library = new Map();
         this.keyWordsMap = new Map();
+        this.normalizeMap = new Map();
     }
 
     /** Return array of non-noise normalized words from string content.
@@ -39,12 +40,14 @@ class DocFinder {
      */
     _wordsLow(content) {
         let set2 = new Set(content);
+        this.buildNormalizeMap();
         for (let word of set2) {
             if(!this.keyWordsMap.has(word)){
             let titleArray = [], offsetArray = [], times = [];
             for (let entrySet of this.library) {
-                let regex = new RegExp('\\b'+word+'(?=[^a-z])', "i");
-                let regex2 = new RegExp('\\b'+word+'(?=[^a-z])', "ig");
+                let word2 = this.normalizeMap.get(word);
+                let regex = new RegExp('\\b'+word2+'(?=[^a-z])', "i");
+                let regex2 = new RegExp('\\b'+word2+'(?=[^a-z])', "ig");
                 if (regex.test(entrySet[1])) {
                     titleArray.push(entrySet[0]);
                     offsetArray.push(regex.exec(entrySet[1]).index);
@@ -64,6 +67,17 @@ class DocFinder {
         }
         keyWordsSet = new Set(tmp);
         addedKeyWords = true;
+    }
+
+    buildNormalizeMap(){
+        for(let value of this.library.values()){
+            let tmp = value.replace(/\n/g, " ").split(" ");
+            for(let tmp2 of tmp){
+                if(this.isNoiseWord(tmp2)){
+                    this.normalizeMap.set(normalize(tmp2), tmp2);
+                }
+            }
+        }
     }
 
     /** Add all normalized words in noiseWords string to this as
