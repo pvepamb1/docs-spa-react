@@ -19,7 +19,11 @@ class DocFinder {
    *  hosts the persistent content provided by this class.
    */
   constructor(dbUrl) {
-    //TODO
+    this.url = dbUrl;
+    this.dbName = dbUrl.substring(dbUrl.lastIndexOf('/')+1);
+    this.client = null;
+    this.database = null;
+    this.noise = null;
   }
 
   /** This routine is used for all asynchronous initialization
@@ -27,19 +31,27 @@ class DocFinder {
    *  immediately after creating a new instance of this.
    */
   async init() {
-    //TODO
+      try {
+          this.client = await mongo.connect(this.url, {useNewUrlParser: true});
+          this.database = await this.client.db(this.dbName);
+          this.noise = await this.database.collection('noiseWords').find('words').toArray();
+          this. test = await new Set(this.noise[0].words.split('\n'))
+      } catch (err) {
+          console.log(err.stack);
+      }
   }
 
   /** Release all resources held by this doc-finder.  Specifically,
    *  close any database connections.
    */
   async close() {
-    //TODO
+    console.log(this.test)
+    await this.client.close();
   }
 
   /** Clear database */
   async clear() {
-    //TODO
+    await this.database.dropDatabase();
   }
 
   /** Return an array of non-noise normalized words from string
@@ -49,7 +61,6 @@ class DocFinder {
    *  characters matching regex [^a-z] have been removed.
    */
   async words(contentText) {
-    //TODO
     return [];
   }
 
@@ -57,7 +68,7 @@ class DocFinder {
    *  noise words.  This operation should be idempotent.
    */
   async addNoiseWords(noiseText) {
-    //TODO
+    await this.database.collection('noiseWords').insertOne({words:noiseText});
   }
 
   /** Add document named by string name with specified content string
@@ -66,7 +77,7 @@ class DocFinder {
    *  This operation should be idempotent.
    */ 
   async addContent(name, contentText) {
-    //TODO
+    await this.database.collection('titles').insertOne({name:name, content:contentText});
   }
 
   /** Return contents of document name.  If not found, throw an Error
