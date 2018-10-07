@@ -83,7 +83,7 @@ class DocFinder {
    *  noise words.  This operation should be idempotent.
    */
   async addNoiseWords(noiseText) {
-    await this.database.collection('noiseWords').insertOne({words:noiseText});
+    await this.database.collection('noiseWords').updateOne({},{$set:{words:noiseText}},{upsert:true});
   }
 
   /** Add document named by string name with specified content string
@@ -98,12 +98,12 @@ class DocFinder {
           const [word, offset] = pair;
           let wordIndex = this.indexes.get(word);
           if (!wordIndex) this.indexes.set(word, wordIndex = new Map());
-          let wordInfo = /*new Map(Object.entries(*/wordIndex/*))*/.get(name);
+          let wordInfo = wordIndex.get(name);
           if (!wordInfo) wordIndex.set(name, wordInfo = [0, offset]);
           wordInfo[0]++;
       });
-      await this.database.collection('wordMap').insertOne({name:'map', content:this.indexes});
-      await this.database.collection('titles').insertOne({name:'map2', content:this.contents});
+      await this.database.collection('wordMap').updateOne({name:'map'}, {$set:{name:'map', content:this.indexes}}, {upsert: true});
+      await this.database.collection('titles').updateOne({name:'map2'}, {$set:{name:'map2', content:this.contents}}, {upsert:true});
       this.isComplete = false;
   }
 
@@ -166,6 +166,22 @@ class DocFinder {
         const docs = new Map();
         terms.forEach((term) => {
             const termIndex = this.indexes.get(term);
+            if (termIndex) {
+                for (const [name, idx] of Object.entries(termIndex)) {
+                    let docIndex = docs.get(name);
+                    if (!docIndex) docs.set(name, docIndex = []);
+                    docIndex.push(idx);
+                }
+            }
+        });
+        return docs;
+    }
+
+    _findDocs2(terms) {
+        const docs = new Map();
+        terms.forEach((term) => {
+            this.cur = this.database.collection('wordMap').find({},{term:1});
+            const termIndex = this.cur;//.get(term);
             if (termIndex) {
                 for (const [name, idx] of Object.entries(termIndex)) {
                     let docIndex = docs.get(name);
