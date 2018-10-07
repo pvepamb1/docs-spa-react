@@ -202,7 +202,7 @@ class DocFinder {
       if (!this.isComplete) this._makeCompletions();
       if (!text.match(/[a-zA-Z]$/)) return [];
       const word = text.split(/\s+/).map(w=>normalize(w)).slice(-1)[0];
-      return this.completions.get(word[0]).filter((w) => w.startsWith(word));
+      return (this.completions.get(word[0]))?this.completions.get(word[0]).filter((w) => w.startsWith(word)):'';
   }
 
     _makeCompletions() {
