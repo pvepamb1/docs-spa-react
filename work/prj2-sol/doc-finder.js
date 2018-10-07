@@ -98,7 +98,7 @@ class DocFinder {
           const [word, offset] = pair;
           let wordIndex = this.indexes.get(word);
           if (!wordIndex) this.indexes.set(word, wordIndex = new Map());
-          else wordIndex = new Map(Object.entries(wordIndex));
+          else if(!wordIndex instanceof Map)wordIndex = new Map(Object.entries(wordIndex));
           let wordInfo = wordIndex.get(name);
           if (!wordInfo) wordIndex.set(name, wordInfo = [0, offset]);
           wordInfo[0]++;
@@ -126,9 +126,12 @@ class DocFinder {
    */
   async docContent(name) {
         if(this.contents.has(name))
-            return this.contents.get(name);
-        else return {code: 'NOT_FOUND',
-        message: 'doc ${name} not found'};
+            return await this.contents.get(name);
+        else {
+            let err = new Error('doc ' + name +' not found');
+            err.code = 'NOT_FOUND';
+            throw err;
+        }
   }
   
   /** Given a list of normalized, non-noise words search terms, 
