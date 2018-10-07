@@ -98,6 +98,7 @@ class DocFinder {
           const [word, offset] = pair;
           let wordIndex = this.indexes.get(word);
           if (!wordIndex) this.indexes.set(word, wordIndex = new Map());
+          else wordIndex = new Map(Object.entries(wordIndex));
           let wordInfo = wordIndex.get(name);
           if (!wordInfo) wordIndex.set(name, wordInfo = [0, offset]);
           wordInfo[0]++;
