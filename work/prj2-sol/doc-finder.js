@@ -24,6 +24,10 @@ class DocFinder {
     this.client = null;
     this.database = null;
     this.noise = null;
+    this.contents = new Map();
+    this.indexes = null;
+    this.completions = new Map();
+    this.isComplete = false;
   }
 
   /** This routine is used for all asynchronous initialization
@@ -34,8 +38,20 @@ class DocFinder {
       try {
           this.client = await mongo.connect(this.url, {useNewUrlParser: true});
           this.database = await this.client.db(this.dbName);
-          this.noise = await this.database.collection('noiseWords').find('words').toArray();
-          this. test = await new Set(this.noise[0].words.split('\n'))
+          this.test = await this.database.collection('noiseWords').find('words').toArray();
+          if(this.test.length!==0)
+          this.noise = await new Set(this.test[0].words.split('\n'))
+          else this.noise = new Set();
+          this.indexes1 = await this.database.collection('wordMap').find({name:"map"}).toArray();
+          if(this.indexes1.length!==0)
+          this.indexes2 = this.indexes1[0].content;
+          else this.indexes2 = new Map();
+          this.indexes = new Map(Object.entries(this.indexes2));
+          this.contents1 = await this.database.collection('titles').find({name:"map2"}).toArray();
+          if(this.contents1.length!==0)
+          this.contents2 = this.contents1[0].content;
+          else this.contents2 = new Map();
+          this.contents = new Map(Object.entries(this.contents2));
       } catch (err) {
           console.log(err.stack);
       }
@@ -45,7 +61,6 @@ class DocFinder {
    *  close any database connections.
    */
   async close() {
-    console.log(this.test)
     await this.client.close();
   }
 
@@ -61,7 +76,7 @@ class DocFinder {
    *  characters matching regex [^a-z] have been removed.
    */
   async words(contentText) {
-    return [];
+      return this._wordsLow(contentText).map((pair) => pair[0]);
   }
 
   /** Add all normalized words in the noiseText string to this as
@@ -77,16 +92,42 @@ class DocFinder {
    *  This operation should be idempotent.
    */ 
   async addContent(name, contentText) {
-    await this.database.collection('titles').insertOne({name:name, content:contentText});
+      if (!contentText.endsWith('\n')) contentText += '\n';
+      this.contents.set(name, contentText);
+      this._wordsLow(contentText).forEach((pair) => {
+          const [word, offset] = pair;
+          let wordIndex = this.indexes.get(word);
+          if (!wordIndex) this.indexes.set(word, wordIndex = new Map());
+          let wordInfo = /*new Map(Object.entries(*/wordIndex/*))*/.get(name);
+          if (!wordInfo) wordIndex.set(name, wordInfo = [0, offset]);
+          wordInfo[0]++;
+      });
+      await this.database.collection('wordMap').insertOne({name:'map', content:this.indexes});
+      await this.database.collection('titles').insertOne({name:'map2', content:this.contents});
+      this.isComplete = false;
   }
+
+    _wordsLow(content) {
+        const words = [];
+        let match;
+        while (match = WORD_REGEX.exec(content)) {
+            const word = normalize(match[0]);
+            if (word && !this.noise.has(word)) {
+                words.push([word, match.index]);
+            }
+        }
+        return words;
+    }
 
   /** Return contents of document name.  If not found, throw an Error
    *  object with property code set to 'NOT_FOUND' and property
    *  message set to `doc ${name} not found`.
    */
   async docContent(name) {
-    //TODO
-    return '';
+        if(this.contents.has(name))
+            return this.contents.get(name);
+        else return {code: 'NOT_FOUND',
+        message: 'doc ${name} not found'};
   }
   
   /** Given a list of normalized, non-noise words search terms, 
@@ -108,18 +149,56 @@ class DocFinder {
    *
    */
   async find(terms) {
-    //TODO
-    return [];
+      const docs = this._findDocs(terms);
+      const results = [];
+      for (const [name, wordInfos] of docs.entries()) {
+          const contents = this.contents.get(name);
+          const score =
+              wordInfos.reduce((acc, wordInfo) => acc + wordInfo[0], 0);
+          const offsets = wordInfos.map(wordInfo => wordInfo[1]);
+          results.push(new OffsetResult(name, score, offsets).result(contents));
+      }
+      results.sort(compareResults);
+      return results;
   }
+
+    _findDocs(terms) {
+        const docs = new Map();
+        terms.forEach((term) => {
+            const termIndex = this.indexes.get(term);
+            if (termIndex) {
+                for (const [name, idx] of Object.entries(termIndex)) {
+                    let docIndex = docs.get(name);
+                    if (!docIndex) docs.set(name, docIndex = []);
+                    docIndex.push(idx);
+                }
+            }
+        });
+        return docs;
+    }
 
   /** Given a text string, return a ordered list of all completions of
    *  the last normalized word in text.  Returns [] if the last char
    *  in text is not alphabetic.
    */
   async complete(text) {
-    //TODO
-    return [];
+      if (!this.isComplete) this._makeCompletions();
+      if (!text.match(/[a-zA-Z]$/)) return [];
+      const word = text.split(/\s+/).map(w=>normalize(w)).slice(-1)[0];
+      return this.completions.get(word[0]).filter((w) => w.startsWith(word));
   }
+
+    _makeCompletions() {
+        const completions = new Map();
+        for (const word of this.indexes.keys()) {
+            const c = word[0];
+            if (!completions.get(c)) completions.set(c, []);
+            completions.get(c).push(word);
+        }
+        for (const [c, words] of completions) { words.sort(); }
+        this.completions = completions;
+        this.isComplete = true;
+    }
 
   //Add private methods as necessary
 
@@ -171,6 +250,23 @@ function normalize(word) {
 function stem(word) {
   return word.replace(/\'s$/, '');
 }
+class OffsetResult {
+    constructor(name, score, offsets) {
+        this.name = name; this.score = score; this.offsets = offsets;
+    }
 
+    /** Convert this to a Result by using this.offsets to extract
+     *  lines from contents.
+     */
+    result(contents) {
+        const starts = new Set();
+        this.offsets.forEach(o => starts.add(contents.lastIndexOf('\n', o) + 1));
+        let lines = '';
+        for (const i of Array.from(starts).sort((a, b) => a-b)) {
+            lines += contents.substring(i, contents.indexOf('\n', i) + 1);
+        }
+        return new Result(this.name, this.score, lines);
+    }
+}
 
 
