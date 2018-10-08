@@ -153,7 +153,7 @@ class DocFinder {
    *
    */
   async find(terms) {
-      const docs = this._findDocs(terms);
+      const docs = await this._findDocs(terms);
       const results = [];
       for (const [name, wordInfos] of docs.entries()) {
           const contents = this.contents.get(name);
@@ -181,10 +181,10 @@ class DocFinder {
         return docs;
     }
 
-    _findDocs2(terms) {
+   async _findDocs2(terms) {
         const docs = new Map();
-        terms.forEach((term) => {
-            this.cur = this.database.collection('wordMap').find({},{term:1});
+        terms.forEach(async (term) => {
+            this.cur = await this.database.collection('wordMap').find({"content":term}).toArray();
             const termIndex = this.cur;//.get(term);
             if (termIndex) {
                 for (const [name, idx] of Object.entries(termIndex)) {
