@@ -15,6 +15,11 @@ const CONFLICT = 409;
 const SERVER_ERROR = 500;
 
 
+const ERROR_MAP = {
+    EXISTS: CONFLICT,
+    NOT_FOUND: NOT_FOUND
+}
+
 //Main URLs
 const DOCS = '/docs';
 const COMPLETIONS = '/completions';
@@ -41,12 +46,81 @@ module.exports = { serve };
 function setupRoutes(app) {
   app.use(cors());            //for security workaround in future projects
   app.use(bodyParser.json()); //all incoming bodies are JSON
-
+  app.get(COMPLETIONS, getCompletions(app))
+  app.get(DOCS+'/:name', getContent(app))
+  app.get(DOCS, searchContent(app))
   //@TODO: add routes for required 4 services
 
   app.use(doErrors()); //must be last; setup for server errors   
 }
 
+function getCompletions(app) {
+    return errorWrap(async function(req, res) {
+        try {
+            const TEXT = req.query.text;
+            const results = await app.locals.finder.complete(TEXT);
+            if (results.length === 0) {
+                throw {
+                    isDomain: true,
+                    errorCode: 'NOT_FOUND',
+                    message: `completions ${id} not found`,
+                };
+            }
+            else {
+                res.json(results);
+            }
+        }
+        catch(err) {
+            const mapped = mapError(err);
+            res.status(mapped.status).json(mapped);
+        }
+    });
+}
+
+function searchContent(app) {
+    return errorWrap(async function(req, res) {
+        try {
+            const q = req.query.q;
+            if(!req.query.start) {req.query.start =0; req.url += '&start=0';}
+            if(!req.query.count) {req.query.count = 5; req.url += '&count=5';}
+            const results = await app.locals.finder.find(q);
+            if (results.length === 0) {
+                throw {
+                    isDomain: true,
+                    errorCode: 'NOT_FOUND',
+                    message: `content ${q} not found`,
+                };
+            }
+            else {
+                results.length = req.query.count;
+                for(let val in results)
+                results[val].href=baseUrl(req,DOCS+'/'+results[val].name)
+                let results2={results: results.slice(req.query.start), totalCount: results.length, links:[{rel:'self', href:baseUrl(req,req.url)}]}
+                res.json(results2);
+            }
+        }
+        catch(err) {
+            const mapped = mapError(err);
+            res.status(mapped.status).json(mapped);
+        }
+    });
+}
+
+function getContent(app) {
+    return errorWrap(async function(req, res) {
+        try {
+            const name = req.params.name;
+            const results = await app.locals.finder.docContent(name);
+            res.json(results);
+        }
+        catch(err) {
+            err.isDomain=true;
+            err.errorCode = 'NOT_FOUND';
+            const mapped = mapError(err);
+            res.status(mapped.status).json(mapped);
+        }
+    });
+}
 //@TODO: add handler creation functions called by route setup
 //routine for each individual web service.  Note that each
 //returned handler should be wrapped using errorWrap() to
@@ -61,6 +135,19 @@ function doErrors(app) {
     res.json({ code: 'SERVER_ERROR', message: err.message });
     console.error(err);
   };
+}
+
+function mapError(err) {
+    console.error(err);
+    return err.isDomain
+        ? { status: (ERROR_MAP[err.errorCode] || BAD_REQUEST),
+            code: err.errorCode,
+            message: err.message
+        }
+        : { status: SERVER_ERROR,
+            code: 'INTERNAL',
+            message: err.toString()
+        };
 }
 
 /** Set up error handling for handler by wrapping it in a 
