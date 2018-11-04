@@ -49,22 +49,43 @@ function setupRoutes(app) {
   app.get(COMPLETIONS, getCompletions(app))
   app.get(DOCS+'/:name', getContent(app))
   app.get(DOCS, searchContent(app))
-  //@TODO: add routes for required 4 services
+  app.post(DOCS, addContent(app))
+  app.use(doErrors()); //must be last; setup for server errors
+}
 
-  app.use(doErrors()); //must be last; setup for server errors   
+function addContent(app) {
+    return errorWrap(async function(req, res) {
+        try {
+            const obj = req.body;
+            if(!obj.name || !obj.content)
+                throw{
+                    isDomain:true,
+                    errCode:'BAD_REQUEST',
+                    message: 'Invalid JSON request'
+                };
+            const results = await app.locals.finder.addContent(obj.name, obj.content);
+            res.append('Location', requestUrl(req) + '/' + obj.name);
+            res.status(CREATED).json({href: requestUrl(req) + '/' + obj.name});
+        }
+        catch(err) {
+            const mapped = mapError(err);
+            res.status(mapped.status).json(mapped);
+        }
+    });
 }
 
 function getCompletions(app) {
     return errorWrap(async function(req, res) {
         try {
+            if(!req.query.text) throw{
+                isDomain:true,
+                errCode : 'BAD_REQUEST',
+                message: 'missing query param text'
+            };
             const TEXT = req.query.text;
             const results = await app.locals.finder.complete(TEXT);
             if (results.length === 0) {
-                throw {
-                    isDomain: true,
-                    errorCode: 'NOT_FOUND',
-                    message: `completions ${id} not found`,
-                };
+                res.send('[]');
             }
             else {
                 res.json(results);
@@ -80,23 +101,21 @@ function getCompletions(app) {
 function searchContent(app) {
     return errorWrap(async function(req, res) {
         try {
+            if(!validateQuery(req))
+                throw{
+                    isDomain: true,
+                    errorCode: 'BAD_REQUEST',
+                    message: `invalid range`,
+                };
             const q = req.query.q;
-            if(!req.query.start) {req.query.start =0; req.url += '&start=0';}
-            if(!req.query.count) {req.query.count = 5; req.url += '&count=5';}
+            if(!req.query.start) req.query.start =0;
+            if(!req.query.count) req.query.count = 5;
             const results = await app.locals.finder.find(q);
             if (results.length === 0) {
-                throw {
-                    isDomain: true,
-                    errorCode: 'NOT_FOUND',
-                    message: `content ${q} not found`,
-                };
+                res.send('[]');
             }
             else {
-                results.length = req.query.count;
-                for(let val in results)
-                results[val].href=baseUrl(req,DOCS+'/'+results[val].name)
-                let results2={results: results.slice(req.query.start), totalCount: results.length, links:[{rel:'self', href:baseUrl(req,req.url)}]}
-                res.json(results2);
+                res.json(responseBuilder(req, results));
             }
         }
         catch(err) {
@@ -121,10 +140,53 @@ function getContent(app) {
         }
     });
 }
-//@TODO: add handler creation functions called by route setup
 //routine for each individual web service.  Note that each
 //returned handler should be wrapped using errorWrap() to
 //ensure that any internal errors are handled reasonably.
+
+function responseBuilder(req, results){
+
+    let origLen = results.length;
+
+    for(let val in results)
+        results[val].href=baseUrl(req,DOCS+'/'+results[val].name)
+
+    let q = req.query.q;
+    let start = req.query.start;
+    let count = req.query.count;
+    let total = parseInt(start)+ parseInt(count);
+    console.log(typeof total +" "+ total)
+    console.log(results.slice(start, total))
+
+    let results2 = {
+        results: results.slice(start, total),
+        totalCount: origLen,
+        links:[{rel:'self', href:baseUrl(req,'/docs?q='+q+'&start='+start+'&count='+count)}]
+    };
+
+    if(origLen>req.query.count){
+        results2.links.push({rel:'next', href:baseUrl(req,'/docs?q='+q+'&start='+(parseInt(start)+parseInt(count)))+'&count='+count});
+    }
+
+    if(start>0){
+        results2.links.push({
+            rel:'previous',
+            href:baseUrl(req,'/docs?q='+q+'&start='+((start-count)>=0?(start-count):'0')+'&count='+count)}
+            );
+    }
+    return results2;
+}
+
+function requestUrl(req) {
+    const port = req.app.locals.port;
+    return `${req.protocol}://${req.hostname}:${port}${req.originalUrl}`;
+}
+
+function validateQuery(req){
+    if(req.query.start && req.query.start < 0) return false;
+    if(req.query.count && req.query.count <0) return false;
+    return true;
+}
 
 /** Return error handler which ensures a server error results in nice
  *  JSON sent back to client with details logged on console.
