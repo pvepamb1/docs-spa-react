@@ -30,12 +30,127 @@ module.exports = serve;
 /******************************** Routes *******************************/
 
 function setupRoutes(app) {
+  const base = app.locals.base;
+  app.get(`/docs/search.html`, findTerm(app));
+  app.get('/docs/add.html', addDoc(app));
+  app.post('/docs/add', upload.single('file'), addDoc(app));
+  app.get('/', function (req, res) {
+      res.redirect('/docs');
+  });
+
+  app.get(`/docs/:id`, getDoc(app));
+
   //@TODO add appropriate routes
 }
 
 /*************************** Action Routines ***************************/
 
 //@TODO add action routines for routes + any auxiliary functions.
+
+function findTerm(app) {
+    return async function(req, res) {
+        let model;
+        if(typeof req.query.q === "undefined") {
+            res.send(doMustache(app, 'search', {}));
+            return ;
+        }
+
+        if (req.query.q!=="") {
+            try {
+                model = await app.locals.model.find(req);
+                let relUrl = relativeUrl(req,`${app.locals.base}/`);
+                for (let res of model.results){
+                    res.href = relUrl+res.name;
+                    res.lines = highlight(res.lines, req.query.q);
+                }
+                if(model.results.length===0)
+                    model.errors2 = 'no document containing \"' + req.query.q + '\" found; please retry';
+                for(let link of model.links){
+                    link.href = link.href.replace(model.docsUrl, relUrl+'search.html');
+                }
+            }
+            catch (err) {
+                console.error(err);
+                let error = wsErrors(err);
+                const model2 = errorModel(app, req.body, error);
+                const html = doMustache(app, 'search', model2);
+                res.send(html);
+            }
+            const html = doMustache(app, 'search', model);
+            res.send(html);
+        }
+        else {
+            const html = doMustache(app, 'search', {errors:'please specify one-or-more search terms'});
+            res.send(html);
+        }
+    };
+}
+
+function highlight(line, query) {
+    let words = query.split(' ');
+    for(let word of words){
+    let re = new RegExp("\\b"+word+"\\b", 'ig');
+    line[0] = line[0].replace(re, '<span class="search-term">$&</span>');
+    }
+    return line;
+}
+
+function addDoc(app) {
+    return async function(req, res) {
+        if(!req.body) {
+            res.send(doMustache(app, 'add', {}));
+            return ;
+        }
+        let errors = validate(req, ['file']);
+        if (!errors) {
+            try {
+                await app.locals.model.create({name:req.file.originalname.slice(0,-4), content:req.file.buffer.toString('utf8')});
+                res.redirect(`/docs/${req.file.originalname.slice(0,-4)}`);
+            }
+            catch (err) {
+                console.error(err);
+                let error = wsErrors(err);
+                const model = errorModel(app, req.body, error);
+                const html = doMustache(app, 'error', model);
+                res.send(html);
+            }
+        }
+        if (errors) {
+            const html = doMustache(app, 'add', {errors:'please select a file containing a document to upload'});
+            res.send(html);
+        }
+    };
+}
+
+function getDoc(app) {
+    return async function(req, res) {
+        let model;
+        const id = req.params.id;
+        try {
+            model = await app.locals.model.get(id);
+        }
+        catch (err) {
+            console.error(err);
+            const errors = wsErrors(err);
+            model = errorModel(app, {}, errors);
+        }
+        const html = doMustache(app, 'details', model);
+        res.send(html);
+    };
+}
+
+function errorModel(app, values={}, errors={}) {
+    return {
+        base: app.locals.base,
+        errors: errors._,
+    };
+}
+
+function wsErrors(err) {
+    const msg = (err.message) ? err.message : 'web service error';
+    console.error(msg);
+    return { _: [ msg ] };
+}
 
 /************************ General Utilities ****************************/
 
@@ -49,6 +164,17 @@ function getNonEmptyValues(values) {
   return out;
 }
 
+function validate(values, requires=[]) {
+    const errors = {};
+    requires.forEach(function (name) {
+        if (values[name] === undefined) {
+            errors[name] =
+                `A value must be provided`;
+        }
+    });
+
+    return Object.keys(errors).length > 0 && errors;
+}
 
 /** Return a URL relative to req.originalUrl.  Returned URL path
  *  determined by path (which is absolute if starting with /). For
