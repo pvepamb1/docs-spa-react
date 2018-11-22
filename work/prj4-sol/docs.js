@@ -31,15 +31,13 @@ module.exports = serve;
 
 function setupRoutes(app) {
   const base = app.locals.base;
-  app.get(`/docs/search.html`, findTerm(app));
-  app.get('/docs/add.html', addDoc(app));
-  app.post('/docs/add', upload.single('file'), addDoc(app));
+  app.get(`${base}/search.html`, findTerm(app));
+  app.get(`${base}/add.html`, addDoc(app));
+  app.post(`${base}/add`, upload.single('file'), addDoc(app));
   app.get('/', function (req, res) {
       res.redirect('/docs');
   });
-
-  app.get(`/docs/:id`, getDoc(app));
-
+  app.get(`${base}/:id`, getDoc(app));
   //@TODO add appropriate routes
 }
 
