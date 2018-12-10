@@ -15,14 +15,28 @@ class Content extends React.Component {
    */
   constructor(props) {
     super(props);
-    //@TODO
+    this.state = {content:''}
+  }
+
+  async componentDidMount(){
+      if(this.props.name){
+        let vl = await this.props.app.ws.getContent(this.props.name);
+        this.setState({content: vl});
+      }
+  }
+
+  async componentDidUpdate(){
+      let vl = await this.props.app.ws.getContent(this.props.name);
+      this.setState({content: vl});
   }
 
   //@TODO
 
   render() {
     //@TODO
-    return "";
+    return (
+        <section><h1>{this.props.name}</h1><pre>{this.state.content}</pre></section>
+    );
   }
 
 }

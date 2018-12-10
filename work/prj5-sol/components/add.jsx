@@ -14,7 +14,23 @@ class Add extends React.Component {
    */
   constructor(props) {
     super(props);
-    //@TODO
+    this.handleSubmit = this.handleSubmit.bind(this);
+    this.fileInput = React.createRef();
+  }
+
+  handleSubmit(event){
+      event.preventDefault();
+      console.log(this.fileInput.current.files[0]);
+      let fileReader = new FileReader();
+      fileReader.readAsText(this.fileInput.current.files[0]);
+      let res;
+      fileReader.onloadend = async function(e){
+          console.log(e.target.result);
+          res = e.target.result;
+          let name = this.fileInput.current.files[0].name.split('.')[0];
+          console.log(await this.props.app.ws.addContent(name, res));
+          this.props.app.setContentName(name);
+      }.bind(this);
   }
 
   //@TODO add code
@@ -28,8 +44,15 @@ class Add extends React.Component {
 
 
   render() {
-    //@TODO
-    return "";
+      return (
+          <form>
+              <label>
+                  Choose file: &nbsp;&nbsp;
+                  <input type="file" accept=".txt" ref={this.fileInput} onChange={this.handleSubmit}/>
+              </label>
+              <br />
+          </form>
+      );
   }
 
 }
